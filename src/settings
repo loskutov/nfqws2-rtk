@@ -1,0 +1,11 @@
+# POSIX shell assignments; root-owned, loaded by service.sh.
+# Space-separated provider interfaces, matching nfqws2-keenetic naming.
+ISP_INTERFACE="ppp0"
+NFQUEUE_NUM=300
+WINDOW=20
+UDP_WINDOW=15
+TCP_PORTS=443
+UDP_PORTS=443
+SAVE_INTERVAL=600
+MAX_LIST_BYTES=262144
+DEBUG=0

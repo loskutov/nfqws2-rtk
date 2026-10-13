@@ -1,0 +1,3 @@
+--blob=quic_initial:@/var/config/nfqws2/blobs/quic_initial.bin
+--payload=quic_initial
+--lua-desync=fake:blob=quic_initial:repeats=11

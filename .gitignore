@@ -1,0 +1,9 @@
+modules/*
+!modules/.gitkeep
+*.ko
+*.o
+*.tar.gz
+__pycache__/
+.DS_Store
+*.log
+*.pid
