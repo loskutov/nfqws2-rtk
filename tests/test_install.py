@@ -65,7 +65,7 @@ class InstallerTest(unittest.TestCase):
                 f.write(hashlib.sha256(data).hexdigest()+'  '+prefix+'/binaries/'+arch+'/nfqws2\n')
         mocks = {
             'df': 'printf "Filesystem Blocks Used Available Use%% Mounted\\nmock 99999 1 %s 1%% config\\n" "${FREE_KB:-65536}"',
-            'modinfo': 'echo "5.10.226 SMP mod_unload aarch64"',
+            'modinfo': 'printf \"%s5.10.226 SMP mod_unload aarch64\\n\" \"${MODINFO_PREFIX:-}\"',
             'service': '''case "$2" in
 start) [ "${FAIL_START:-0}" = 0 ] || exit 1; touch "$SERVICE_STATE";;
 stop) rm -f "$SERVICE_STATE";;
@@ -126,6 +126,10 @@ else:raise Exception(url)
         self.assertEqual((self.base/'lists/auto.list').read_text(), 'learned.example\n')
         self.assertTrue(self.backup.exists())
         self.run_install(False)
+
+    def test_busybox_prefixed_vermagic(self):
+        self.run_install(MODINFO_PREFIX='vermagic:       ')
+        self.assertTrue(self.hook.exists())
 
     def test_mips_byte_order(self):
         self.run_install(TEST_ARCH='mips', TEST_ELF='7f454c460102')

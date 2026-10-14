@@ -52,7 +52,7 @@ esac
 case "$PROJECT_REF" in ''|*[!a-zA-Z0-9._/-]*) fail 'invalid PROJECT_REF';; esac
 for module in xt_NFQUEUE nfnetlink_queue; do
     [ -r "$MODULES_DIR/$module.ko" ] || fail "provide $MODULES_DIR/$module.ko for your exact firmware"
-    case "$(modinfo -F vermagic "$MODULES_DIR/$module.ko")" in
+    case "$(modinfo -F vermagic "$MODULES_DIR/$module.ko" | sed 's/^[[:space:]]*vermagic:[[:space:]]*//')" in
         "$(uname -r) "*) :;;
         *) fail "$module vermagic kernel release mismatch";;
     esac

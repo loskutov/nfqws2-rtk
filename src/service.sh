@@ -63,7 +63,7 @@ check() {
         *) die 'this package requires AArch64 or 32-bit MIPS';;
     esac
     for module in xt_NFQUEUE nfnetlink_queue; do
-        case "$(modinfo -F vermagic "$BASE/modules/$module.ko")" in
+        case "$(modinfo -F vermagic "$BASE/modules/$module.ko" | sed 's/^[[:space:]]*vermagic:[[:space:]]*//')" in
             "$(uname -r) "*) :;;
             *) die "$module kernel release does not match; supply compatible modules";;
         esac
