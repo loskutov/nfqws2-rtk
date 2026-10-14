@@ -22,6 +22,8 @@ aarch64-linux-gnu-strip --strip-debug \
   "$KERNEL_BUILD/net/netfilter/nfnetlink_queue.ko"
 ```
 
+The example above is for RTL9607F/AArch64. For RTL9607C, use `ARCH=mips` and the matching vendor MIPS toolchain (including its byte order and ABI). AArch64 modules and the offsets measured below cannot be reused on MIPS.
+
 Use the vendor toolchain prefix when available. `modules_prepare` does not generate a complete Module.symvers; use the matching vendor exports/build output, especially with MODVERSIONS. Keep unstripped artifacts offline. Do not use `strip --strip-all` or discard relocation/symbol tables required by the loader.
 
 If vendor sources are unavailable, [BPI-RT2's Realtek SDK](https://github.com/jf-xf/BPI-RT2/tree/74fcf31586353515e1f41eaa1dadc6d0b6405af6/rtk_openwrt/target/linux/realtek_bb) is a useful **reference**, not a guaranteed matching tree. Its patches target older 5.10 revisions; applying all patches blindly is insufficient.

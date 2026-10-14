@@ -10,6 +10,8 @@ nfqws2 for Realtek-based ONTs, following [nfqws2-keenetic](https://github.com/nf
 
 Vendor patches and kernel configuration change internal structure layouts, so modules for another firmware can be incompatible even when the kernel version matches. An LLM can help adapt Realtek SDK patches and compare the stock modules and kernel image against a candidate build. Give it the original kernel config and binaries, and verify its conclusions against the actual layouts and exports. See [building the modules](docs/modules.md).
 
+Runtime selection supports AArch64 and 32-bit MIPS in either byte order. **MIPS support, including RTL9607C, has never been tested on hardware and is probably broken.** It assumes the same FleetConntrack `MARK2` mechanism and boot hook as the tested RTL9607F firmware.
+
 Tested on SP-GE3001 / RTL9607F, Linux 5.10.226: TCP/TLS and QUIC. Hardware acceleration is retained after the initial packets.
 
 ## Install

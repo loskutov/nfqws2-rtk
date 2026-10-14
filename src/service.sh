@@ -51,7 +51,10 @@ validate_settings() {
     [ "$SAVE_INTERVAL" -ge 60 ] || die 'SAVE_INTERVAL must be at least 60'
 }
 check() {
-    [ "$(uname -m)" = aarch64 ] || die 'this package requires AArch64'
+    case "$(uname -m)" in
+        aarch64|mips|mipsel) :;;
+        *) die 'this package requires AArch64 or 32-bit MIPS';;
+    esac
     for module in xt_NFQUEUE nfnetlink_queue; do
         case "$(modinfo -F vermagic "$BASE/modules/$module.ko")" in
             "$(uname -r) "*) :;;

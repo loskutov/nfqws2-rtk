@@ -35,6 +35,8 @@ class InstallerTest(unittest.TestCase):
         with tarfile.open(self.fixture/'runtime.tar.gz', 'w:gz') as tar:
             for name, data in {
                 'binaries/linux-arm64/nfqws2': binary,
+                'binaries/linux-mips/nfqws2': b'big endian fixture',
+                'binaries/linux-mipsel/nfqws2': b'little endian fixture',
                 'lua/zapret-lib.lua': b'-- fixture',
                 'lua/zapret-antidpi.lua': b'-- fixture',
                 'lua/zapret-auto.lua': b'-- fixture',
@@ -44,6 +46,9 @@ class InstallerTest(unittest.TestCase):
                 tar.addfile(info, io.BytesIO(data))
         (self.fixture/'release.json').write_text(json.dumps({'tag_name': self.version}))
         (self.fixture/'upstream.sha256').write_text(hashlib.sha256(binary).hexdigest()+'  '+prefix+'/binaries/linux-arm64/nfqws2\n')
+        with (self.fixture/'upstream.sha256').open('a') as f:
+            for arch, data in [('linux-mips', b'big endian fixture'), ('linux-mipsel', b'little endian fixture')]:
+                f.write(hashlib.sha256(data).hexdigest()+'  '+prefix+'/binaries/'+arch+'/nfqws2\n')
         mocks = {
             'df': 'printf "Filesystem Blocks Used Available Use%% Mounted\\nmock 99999 1 %s 1%% config\\n" "${FREE_KB:-65536}"',
             'modinfo': 'echo "5.10.226 SMP mod_unload aarch64"',
@@ -70,8 +75,9 @@ else:raise Exception(url)
         text = (ROOT/'install.sh').read_text()
         text = text.replace('/var/config', str(self.config)).replace('/tmp/nfqws2-rtk-install.', str(self.root/'work.'))
         text = text.replace('/proc/fc/ctrl/skbmark_fwdByPs', str(self.mark)).replace('/proc/net/netfilter/nfnetlink_queue', str(self.queue))
-        text = text.replace('$(id -u)', '0').replace('$(uname -m)', 'aarch64').replace('$(uname -r)', '5.10.226')
+        text = text.replace('$(id -u)', '0').replace('$(uname -m)', '${TEST_ARCH:-aarch64}').replace('$(uname -r)', '5.10.226')
         text = text.replace('modinfo -F', '"$TEST_MODINFO" -F').replace('df -k', '"$TEST_DF" -k').replace('sh "$BASE/service.sh"', '"$TEST_SERVICE" "$BASE/service.sh"')
+        text = text.replace("$(hexdump -v -n 6 -e '1/1 \"%02x\"' /bin/busybox)", '${TEST_ELF:-7f454c460102}')
         self.script = self.root/'install.sh'; self.script.write_text(text)
         self.env = dict(os.environ, PATH=str(self.bin)+':'+os.environ['PATH'], SOURCE_DIR=str(ROOT),
             MODULES_DIR=str(self.modules), FIXTURES=str(self.fixture), SERVICE_STATE=str(self.root/'running'),
@@ -97,6 +103,17 @@ else:raise Exception(url)
         self.assertEqual((self.base/'lists/auto.list').read_text(), 'learned.example\n')
         self.assertTrue(self.backup.exists())
         self.run_install(False)
+
+    def test_mips_byte_order(self):
+        self.run_install(TEST_ARCH='mips', TEST_ELF='7f454c460102')
+        self.assertEqual((self.base/'nfqws2').read_bytes(), b'big endian fixture')
+        self.run_install(TEST_ARCH='mips', TEST_ELF='7f454c460101')
+        self.assertEqual((self.base/'nfqws2').read_bytes(), b'little endian fixture')
+
+    def test_architecture_rejection(self):
+        self.run_install(False, TEST_ARCH='x86_64')
+        self.run_install(False, TEST_ARCH='mips', TEST_ELF='7f454c460202')
+        self.assertFalse(self.base.exists())
 
     def test_preconditions(self):
         self.queue.write_text('300 123 0 2 65535 0 0 0 1\n')

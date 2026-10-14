@@ -35,7 +35,18 @@ source_file() {
     else fetch "$PROJECT_URL/$PROJECT_REF/$1" "$2"; fi
 }
 [ "$(id -u)" = 0 ] || fail 'root required'
-[ "$(uname -m)" = aarch64 ] || fail 'currently supports AArch64 only'
+case "$(uname -m)" in
+    aarch64) runtime_arch=linux-arm64;;
+    mips|mipsel)
+        # uname often says mips for either byte order. Inspect the native ELF.
+        native_elf=$(hexdump -v -n 6 -e '1/1 "%02x"' /bin/busybox) || fail 'cannot inspect native ELF'
+        case "$native_elf" in
+            7f454c460101) runtime_arch=linux-mipsel;;
+            7f454c460102) runtime_arch=linux-mips;;
+            *) fail 'requires a 32-bit MIPS userspace';;
+        esac;;
+    *) fail 'supported architectures: AArch64 and 32-bit MIPS';;
+esac
 [ -r /proc/fc/ctrl/skbmark_fwdByPs ] || fail 'requires the investigated FleetConntrack FWDBYPS interface'
 [ -n "$SOURCE_DIR$PROJECT_URL" ] || fail 'set SOURCE_DIR to the checkout, or PROJECT_URL to its raw GitHub base URL'
 case "$PROJECT_REF" in ''|*[!a-zA-Z0-9._/-]*) fail 'invalid PROJECT_REF';; esac
@@ -81,12 +92,12 @@ release="https://github.com/bol-van/zapret2/releases/download/$NFQWS2_VERSION"
 fetch "$release/$prefix.tar.gz" "$WORK/runtime.tar.gz" || fail 'runtime download failed'
 fetch "$release/sha256sum.txt" "$WORK/upstream.sha256" || fail 'checksum manifest download failed'
 # Extract only explicitly named members. No arbitrary archive paths are unpacked.
-tar -xOzf "$WORK/runtime.tar.gz" "$prefix/binaries/linux-arm64/nfqws2" > "$STAGE/nfqws2" || fail 'AArch64 runtime absent'
+tar -xOzf "$WORK/runtime.tar.gz" "$prefix/binaries/$runtime_arch/nfqws2" > "$STAGE/nfqws2" || fail "$runtime_arch runtime absent"
 for file in zapret-lib.lua zapret-antidpi.lua zapret-auto.lua; do
     tar -xOzf "$WORK/runtime.tar.gz" "$prefix/lua/$file" > "$STAGE/lua/$file" || fail "runtime missing $file"
 done
 tar -xOzf "$WORK/runtime.tar.gz" "$prefix/docs/LICENSE.txt" > "$STAGE/LICENSE-zapret2" || fail 'upstream license missing'
-expected=$(awk -v p="$prefix/binaries/linux-arm64/nfqws2" '$2==p {print $1}' "$WORK/upstream.sha256")
+expected=$(awk -v p="$prefix/binaries/$runtime_arch/nfqws2" '$2==p {print $1}' "$WORK/upstream.sha256")
 [ "${#expected}" = 64 ] || fail 'runtime absent from upstream checksum manifest'
 if which sha256sum >/dev/null 2>&1; then
     actual=$(sha256sum "$STAGE/nfqws2"); [ "${actual%% *}" = "$expected" ] || fail 'upstream binary checksum mismatch'
