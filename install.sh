@@ -78,7 +78,19 @@ cleanup() { rm -rf "$WORK" "$STAGE"; }
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 mkdir -p "$STAGE/lua" "$STAGE/blobs" "$STAGE/modules" "$STAGE/lists"
-for file in service.sh settings https.args quic.args; do source_file "src/$file" "$STAGE/$file" || fail "cannot fetch $file"; done
+for file in service.sh kernel-id.sh settings https.args quic.args; do source_file "src/$file" "$STAGE/$file" || fail "cannot fetch $file"; done
+sh "$STAGE/kernel-id.sh" > "$WORK/kernel.identity" || fail 'cannot establish running kernel identity'
+if [ -f "$MODULES_DIR/kernel.identity" ]; then
+    # Explicit approval supplied alongside revalidated/rebuilt modules.
+    cmp -s "$MODULES_DIR/kernel.identity" "$WORK/kernel.identity" || fail 'supplied module approval does not match the running kernel'
+    cp "$MODULES_DIR/kernel.identity" "$STAGE/kernel.identity"
+elif [ -d "$BASE" ]; then
+    [ -f "$BASE/kernel.identity" ] || fail 'approved kernel identity missing'
+    cmp -s "$BASE/kernel.identity" "$WORK/kernel.identity" || fail 'kernel changed; revalidate modules and provide modules/kernel.identity'
+    cp "$BASE/kernel.identity" "$STAGE/kernel.identity"
+else
+    cp "$WORK/kernel.identity" "$STAGE/kernel.identity"
+fi
 source_file LICENSE "$STAGE/LICENSE-nfqws2-rtk" || fail 'cannot fetch license'
 for module in xt_NFQUEUE nfnetlink_queue; do cp "$MODULES_DIR/$module.ko" "$STAGE/modules/"; done
 if [ "$NFQWS2_VERSION" = latest ]; then
@@ -126,7 +138,7 @@ if [ -d "$BASE" ]; then
     for file in https.args quic.args; do [ ! -f "$BASE/$file" ] || cp "$BASE/$file" "$STAGE/$file"; done
     cp "$BASE/lists/"*.list "$STAGE/lists/"
 fi
-(cd "$STAGE" && md5sum nfqws2 service.sh VERSION UPSTREAM-SHA256 LICENSE-* lua/* blobs/* modules/* > MD5SUMS)
+(cd "$STAGE" && md5sum nfqws2 service.sh kernel-id.sh kernel.identity VERSION UPSTREAM-SHA256 LICENSE-* lua/* blobs/* modules/* > MD5SUMS)
 chmod 755 "$STAGE" "$STAGE/lua" "$STAGE/blobs" "$STAGE/modules"
 chmod 755 "$STAGE/nfqws2" "$STAGE/service.sh"
 chmod 644 "$STAGE/lua/"* "$STAGE/blobs/"*

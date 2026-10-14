@@ -50,7 +50,14 @@ validate_settings() {
     [ -n "$TCP_PORTS$UDP_PORTS" ] || die 'at least one protocol must be enabled'
     [ "$SAVE_INTERVAL" -ge 60 ] || die 'SAVE_INTERVAL must be at least 60'
 }
+kernel_check() {
+    [ -r "$BASE/kernel.identity" ] || die 'approved kernel identity missing; modules will not be loaded'
+    current=$(sh "$BASE/kernel-id.sh") || die 'cannot verify running kernel; modules will not be loaded'
+    approved=$(cat "$BASE/kernel.identity") || die 'cannot read approved kernel identity'
+    [ "$current" = "$approved" ] || die 'kernel changed; revalidate modules before starting (nothing loaded)'
+}
 check() {
+    kernel_check
     case "$(uname -m)" in
         aarch64|mips|mipsel) :;;
         *) die 'this package requires AArch64 or 32-bit MIPS';;
@@ -176,6 +183,7 @@ prepare() {
     echo --dry-run > "$RUN/check.args"
     cat "$RUN/args" >> "$RUN/check.args"
     "$BASE/nfqws2" "@$RUN/check.args" > "$RUN/check.log" 2>&1 || die "configuration rejected; see $RUN/check.log"
+    kernel_check || return 1
     for m in xt_NFQUEUE nfnetlink_queue; do
         grep -q "^$m " /proc/modules || insmod "$BASE/modules/$m.ko" || die "cannot load $m"
     done

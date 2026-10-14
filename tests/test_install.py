@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import struct
 import tarfile
 import tempfile
 import unittest
@@ -29,6 +30,15 @@ class InstallerTest(unittest.TestCase):
         self.hook = self.config/'run_test.sh'
         self.backup = self.config/'nfqws2.previous'
         self.fixture = self.root/'fixtures'; self.fixture.mkdir()
+        self.notes = self.root/'kernel.notes'
+        self.notes.write_bytes(struct.pack('<III', 4, 20, 3)+b'GNU\0'+bytes(range(20)))
+        self.kernel_version = self.root/'kernel.version'; self.kernel_version.write_text('Linux test build A\n')
+        self.kernel_config = self.root/'kernel.config'; self.kernel_config.write_bytes(b'config A')
+        self.source = self.root/'source'; self.source.mkdir()
+        shutil.copytree(ROOT/'src', self.source/'src')
+        for name in ['LICENSE', 'cacert.pem']: shutil.copyfile(ROOT/name, self.source/name)
+        helper = self.source/'src/kernel-id.sh'
+        helper.write_text(helper.read_text().replace('/sys/kernel/notes', str(self.notes)).replace('/proc/version', str(self.kernel_version)).replace('/proc/config.gz', str(self.kernel_config)))
         self.version = 'v9.8.7'
         prefix = 'zapret2-'+self.version
         binary = b'fixture runtime: never executed'
@@ -79,7 +89,7 @@ else:raise Exception(url)
         text = text.replace('modinfo -F', '"$TEST_MODINFO" -F').replace('df -k', '"$TEST_DF" -k').replace('sh "$BASE/service.sh"', '"$TEST_SERVICE" "$BASE/service.sh"')
         text = text.replace("$(hexdump -v -n 6 -e '1/1 \"%02x\"' /bin/busybox)", '${TEST_ELF:-7f454c460102}')
         self.script = self.root/'install.sh'; self.script.write_text(text)
-        self.env = dict(os.environ, PATH=str(self.bin)+':'+os.environ['PATH'], SOURCE_DIR=str(ROOT),
+        self.env = dict(os.environ, PATH=str(self.bin)+':'+os.environ['PATH'], SOURCE_DIR=str(self.source),
             MODULES_DIR=str(self.modules), FIXTURES=str(self.fixture), SERVICE_STATE=str(self.root/'running'),
             TEST_MODINFO=str(self.bin/'modinfo'), TEST_DF=str(self.bin/'df'), TEST_SERVICE=str(self.bin/'service'))
 
@@ -114,6 +124,52 @@ else:raise Exception(url)
         self.run_install(False, TEST_ARCH='x86_64')
         self.run_install(False, TEST_ARCH='mips', TEST_ELF='7f454c460202')
         self.assertFalse(self.base.exists())
+
+    def test_kernel_change_blocks_update(self):
+        self.run_install()
+        approval = (self.base/'kernel.identity').read_bytes()
+        self.kernel_version.write_text('Linux test build B\n')
+        self.run_install(False)
+        self.assertEqual((self.base/'kernel.identity').read_bytes(), approval)
+        self.assertTrue((self.root/'running').exists())
+        self.assertFalse(self.backup.exists())
+
+    def test_explicit_rebuilt_module_approval(self):
+        self.run_install()
+        self.kernel_version.write_text('Linux test build B\n')
+        for name in ('xt_NFQUEUE', 'nfnetlink_queue'):
+            (self.modules/(name+'.ko')).write_bytes(b'rebuilt fixture module')
+        approval = subprocess.check_output(['busybox', 'ash', str(self.source/'src/kernel-id.sh')])
+        (self.modules/'kernel.identity').write_bytes(approval)
+        self.run_install()
+        self.assertEqual((self.base/'kernel.identity').read_bytes(), approval)
+        self.assertEqual((self.base/'modules/xt_NFQUEUE.ko').read_bytes(), b'rebuilt fixture module')
+
+    def test_invalid_explicit_approval_rejected(self):
+        (self.modules/'kernel.identity').write_text('wrong approval\n')
+        self.run_install(False)
+        self.assertFalse(self.base.exists())
+
+    def test_missing_build_id_blocks_install(self):
+        self.notes.write_bytes(b'no build id')
+        self.run_install(False)
+        self.assertFalse(self.base.exists())
+
+    def test_kernel_guard_blocks_service_start(self):
+        self.run_install()
+        service = self.root/'service-check.sh'
+        text = (ROOT/'src/service.sh').read_text().replace('/tmp/nfqws2', str(self.root/'run')).replace('/var/config/nfqws2', str(self.base)).replace('$(id -u)', '0')
+        service.write_text(text)
+        # Identical release/version, changed kernel build ID: fail before modinfo,
+        # insmod, daemon launch, accounting or firewall setup.
+        self.notes.write_bytes(struct.pack('<III', 4, 20, 3)+b'GNU\0'+bytes(range(1,21)))
+        p = subprocess.run(['busybox', 'ash', str(service), 'start'], env=self.env, capture_output=True, text=True)
+        self.assertNotEqual(p.returncode, 0)
+        self.assertIn('kernel changed', p.stderr)
+        self.assertFalse((self.root/'run').exists())
+        (self.base/'kernel.identity').unlink()
+        p = subprocess.run(['busybox', 'ash', str(service), 'start'], env=self.env, capture_output=True, text=True)
+        self.assertIn('identity missing', p.stderr)
 
     def test_preconditions(self):
         self.queue.write_text('300 123 0 2 65535 0 0 0 1\n')

@@ -27,3 +27,16 @@ The active auto-list is saved only if changed, every 600 seconds and at clean st
 The boot hook is specific to the inspected firmware, whose rc35 executes `/var/config/run_test.sh`. Other firmware needs a suitable startup integration. Disable ours with `service.sh stop`, then rename our hook out of that exact path. The installer refuses to overwrite unrelated hooks. Updates retain `/var/config/nfqws2.previous`; archive it before another update. On failed new startup, old files are restored, with the service stopped.
 
 Tested manually on SP-GE3001: module loading, TLS splitting/reassembly, sustained forwarded transfer, hardware-backed learned flows, supervisor recovery, firewall repair/cleanup, persistent installation and reboot startup. QUIC connectivity was also tested successfully.
+
+The installer records the running kernel’s GNU build-ID notes, version and embedded config in `kernel.identity`. Startup checks it before module loading, and package updates preserve it and reject a changed kernel unless explicitly supplied with a new approval alongside rebuilt modules (see below). Missing build-ID notes/config also prevent startup; there is no version-only fallback. MD5 here detects accidental changes, not malicious firmware, and recording an identity does not prove the supplied modules are compatible.
+
+After a firmware/kernel update, leave the service stopped until the two modules have been rebuilt and their ABI compatibility checked against that exact running kernel. Put those modules in `./modules/` on the ONT, then explicitly approve the new pairing and reinstall:
+
+```sh
+sh /var/config/nfqws2/service.sh stop
+sh /var/config/nfqws2/kernel-id.sh > /tmp/kernel.identity &&
+cp /tmp/kernel.identity ./modules/kernel.identity
+sh install.sh
+```
+
+The installer accepts this explicit approval only when it matches the running kernel, installs the supplied modules and new approval together, and regenerates their checksums. It otherwise preserves the existing approval. Do not generate `modules/kernel.identity` just to bypass a mismatch: it records your compatibility decision, not an automatic ABI test. Archive any existing `nfqws2.previous` backup before another installation, as described above.

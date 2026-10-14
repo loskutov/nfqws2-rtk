@@ -24,6 +24,8 @@ sh install.sh
 
 The included `cacert.pem` supplies public CA certificates missing from the firmware.
 
+Startup refuses to load modules after the running kernel fingerprint changes. Rebuild and revalidate your modules after a firmware update, then [approve the new kernel/module pairing](docs/install.md).
+
 The installer fetches the latest upstream nfqws2 and matching Lua files, installs the service, and configures firewall rules and boot startup.
 
 ## Configure
