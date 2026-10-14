@@ -78,7 +78,7 @@ cleanup() { rm -rf "$WORK" "$STAGE"; }
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 mkdir -p "$STAGE/lua" "$STAGE/blobs" "$STAGE/modules" "$STAGE/lists"
-for file in service.sh kernel-id.sh settings https.args quic.args; do source_file "src/$file" "$STAGE/$file" || fail "cannot fetch $file"; done
+for file in service.sh kernel-id.sh module-load.sh settings https.args quic.args; do source_file "src/$file" "$STAGE/$file" || fail "cannot fetch $file"; done
 sh "$STAGE/kernel-id.sh" > "$WORK/kernel.identity" || fail 'cannot establish running kernel identity'
 if [ -f "$MODULES_DIR/kernel.identity" ]; then
     # Explicit approval supplied alongside revalidated/rebuilt modules.
@@ -131,6 +131,9 @@ for file in user.list exclude.list; do fetch "$nfqws2_keenetic/lists/$file" "$ST
 printf '%s\n' "$NFQWS2_VERSION" > "$STAGE/VERSION"
 printf '%s\n' "$expected" > "$STAGE/UPSTREAM-SHA256"
 echo 1 > "$STAGE/.managed-rtl9607f-nfqws2"
+# Candidate files are staged, but no installation or boot-hook change precedes
+# this load check. A panic here cannot enable the candidate on the next boot.
+sh "$STAGE/module-load.sh" "$STAGE/modules" "$STAGE/kernel.identity" || fail 'module preflight failed; persistent installation unchanged'
 had_old=0
 if [ -d "$BASE" ]; then
     sh "$BASE/service.sh" stop || fail 'cannot stop old service'
@@ -138,7 +141,7 @@ if [ -d "$BASE" ]; then
     for file in https.args quic.args; do [ ! -f "$BASE/$file" ] || cp "$BASE/$file" "$STAGE/$file"; done
     cp "$BASE/lists/"*.list "$STAGE/lists/"
 fi
-(cd "$STAGE" && md5sum nfqws2 service.sh kernel-id.sh kernel.identity VERSION UPSTREAM-SHA256 LICENSE-* lua/* blobs/* modules/* > MD5SUMS)
+(cd "$STAGE" && md5sum nfqws2 service.sh kernel-id.sh module-load.sh kernel.identity VERSION UPSTREAM-SHA256 LICENSE-* lua/* blobs/* modules/* > MD5SUMS)
 chmod 755 "$STAGE" "$STAGE/lua" "$STAGE/blobs" "$STAGE/modules"
 chmod 755 "$STAGE/nfqws2" "$STAGE/service.sh"
 chmod 644 "$STAGE/lua/"* "$STAGE/blobs/"*

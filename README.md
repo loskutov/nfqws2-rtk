@@ -4,6 +4,8 @@ nfqws2 for Realtek-based ONTs, following [nfqws2-keenetic](https://github.com/nf
 
 ## Requirements
 
+**WARNING: incompatible or faulty kernel modules can crash the ONT and cause bootloops after persistent startup is enabled. Initial test-loading does not prove runtime safety. Have physical access and a recovery method before installing.**
+
 - **Physical access to the device.**
 - **Superadmin credentials.** RotekConfigTool may help obtain them. Log in to the web UI with these credentials and enable Telnet access, then connect to the ONT’s root shell.
 - **`xt_NFQUEUE.ko` and `nfnetlink_queue.ko` built for your firmware.** These are supplied by the user, not distributed here.
@@ -25,6 +27,8 @@ sh install.sh
 The included `cacert.pem` supplies public CA certificates missing from the firmware.
 
 Startup refuses to load modules after the running kernel fingerprint changes. Rebuild and revalidate your modules after a firmware update, then [approve the new kernel/module pairing](docs/install.md).
+
+The installer test-loads modules before replacing the installation or enabling boot startup.
 
 The installer fetches the latest upstream nfqws2 and matching Lua files, installs the service, and configures firewall rules and boot startup.
 

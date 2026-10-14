@@ -40,3 +40,7 @@ sh install.sh
 ```
 
 The installer accepts this explicit approval only when it matches the running kernel, installs the supplied modules and new approval together, and regenerates their checksums. It otherwise preserves the existing approval. Do not generate `modules/kernel.identity` just to bypass a mismatch: it records your compatibility decision, not an automatic ABI test. Archive any existing `nfqws2.previous` backup before another installation, as described above.
+
+Before replacing the installation, stopping the existing service or creating the boot hook, the installer test-loads the candidate modules. A load-time panic therefore cannot activate the candidate for the next boot. Staged files may remain on flash, but are not referenced by the boot hook. Successfully loaded modules remain loaded if a later step fails.
+
+Loads are recorded in RAM with module checksums, approved kernel identity and `/proc/modules` instance information. Already-loaded modules are reused only when that receipt matches; untracked or changed modules require a reboot before installation. No automatic unloading is attempted. Receipts assume modules are managed by this package; they are not an attestation against external module replacement. A successful test-load checks initialization only, not later packet processing.

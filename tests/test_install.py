@@ -39,6 +39,10 @@ class InstallerTest(unittest.TestCase):
         for name in ['LICENSE', 'cacert.pem']: shutil.copyfile(ROOT/name, self.source/name)
         helper = self.source/'src/kernel-id.sh'
         helper.write_text(helper.read_text().replace('/sys/kernel/notes', str(self.notes)).replace('/proc/version', str(self.kernel_version)).replace('/proc/config.gz', str(self.kernel_config)))
+        self.loaded = self.root/'proc-modules'; self.loaded.write_text('')
+        self.receipts = self.root/'module-receipts'
+        loader = self.source/'src/module-load.sh'
+        loader.write_text(loader.read_text().replace('/proc/modules', str(self.loaded)).replace('/tmp/nfqws2-module-loads', str(self.receipts)).replace('insmod "$modules/$module.ko"', '\"$TEST_INSMOD\" "$modules/$module.ko"'))
         self.version = 'v9.8.7'
         prefix = 'zapret2-'+self.version
         binary = b'fixture runtime: never executed'
@@ -70,6 +74,15 @@ esac''',
         }
         for name, body in mocks.items():
             p = self.bin/name; p.write_text('#!/bin/sh\n'+body+'\n'); p.chmod(0o755)
+        insmod = self.bin/'insmod-test'
+        insmod.write_text("""#!/usr/bin/env python3
+import os,pathlib,sys
+name=pathlib.Path(sys.argv[1]).stem
+with open(os.environ['LOAD_LOG'],'a') as f:f.write(name+'\\n')
+if os.environ.get('FAIL_LOAD')==name:sys.exit(1)
+p=pathlib.Path(os.environ['PROC_MODULES'])
+with p.open('a') as f:f.write(name+' 16384 0 - Live 0xffffffc001234000 (O)\\n')
+"""); insmod.chmod(0o755)
         fetch = self.bin/'curl'
         fetch.write_text('''#!/usr/bin/env python3
 import os,pathlib,sys,shutil
@@ -91,7 +104,7 @@ else:raise Exception(url)
         self.script = self.root/'install.sh'; self.script.write_text(text)
         self.env = dict(os.environ, PATH=str(self.bin)+':'+os.environ['PATH'], SOURCE_DIR=str(self.source),
             MODULES_DIR=str(self.modules), FIXTURES=str(self.fixture), SERVICE_STATE=str(self.root/'running'),
-            TEST_MODINFO=str(self.bin/'modinfo'), TEST_DF=str(self.bin/'df'), TEST_SERVICE=str(self.bin/'service'))
+            TEST_INSMOD=str(insmod), LOAD_LOG=str(self.root/'load.log'), PROC_MODULES=str(self.loaded), TEST_MODINFO=str(self.bin/'modinfo'), TEST_DF=str(self.bin/'df'), TEST_SERVICE=str(self.bin/'service'))
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -137,6 +150,8 @@ else:raise Exception(url)
     def test_explicit_rebuilt_module_approval(self):
         self.run_install()
         self.kernel_version.write_text('Linux test build B\n')
+        self.loaded.write_text('')  # new kernel boot; old modules no longer loaded
+        shutil.rmtree(self.receipts)
         for name in ('xt_NFQUEUE', 'nfnetlink_queue'):
             (self.modules/(name+'.ko')).write_bytes(b'rebuilt fixture module')
         approval = subprocess.check_output(['busybox', 'ash', str(self.source/'src/kernel-id.sh')])
@@ -170,6 +185,32 @@ else:raise Exception(url)
         (self.base/'kernel.identity').unlink()
         p = subprocess.run(['busybox', 'ash', str(service), 'start'], env=self.env, capture_output=True, text=True)
         self.assertIn('identity missing', p.stderr)
+
+    def test_load_failure_precedes_persistence(self):
+        self.run_install(False, FAIL_LOAD='nfnetlink_queue')
+        self.assertFalse(self.base.exists())
+        self.assertFalse(self.hook.exists())
+        self.assertFalse((self.root/'running').exists())
+
+    def test_changed_loaded_module_rejected_before_stop(self):
+        self.run_install()
+        (self.modules/'xt_NFQUEUE.ko').write_bytes(b'different module')
+        self.run_install(False)
+        self.assertTrue((self.root/'running').exists())
+        self.assertFalse(self.backup.exists())
+        self.assertEqual((self.base/'modules/xt_NFQUEUE.ko').read_bytes(), b'test module, never loaded')
+
+    def test_untracked_loaded_module_rejected(self):
+        self.loaded.write_text('xt_NFQUEUE 16384 0 - Live 0xffffffc001234000 (O)\n')
+        self.run_install(False)
+        self.assertFalse((self.root/'load.log').exists())
+        self.assertFalse(self.hook.exists())
+
+    def test_loaded_module_refcount_changes_allowed(self):
+        self.run_install()
+        self.loaded.write_text(self.loaded.read_text().replace('16384 0', '16384 4'))
+        self.run_install()
+        self.assertEqual((self.root/'load.log').read_text().splitlines(), ['xt_NFQUEUE', 'nfnetlink_queue'])
 
     def test_preconditions(self):
         self.queue.write_text('300 123 0 2 65535 0 0 0 1\n')

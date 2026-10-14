@@ -184,9 +184,7 @@ prepare() {
     cat "$RUN/args" >> "$RUN/check.args"
     "$BASE/nfqws2" "@$RUN/check.args" > "$RUN/check.log" 2>&1 || die "configuration rejected; see $RUN/check.log"
     kernel_check || return 1
-    for m in xt_NFQUEUE nfnetlink_queue; do
-        grep -q "^$m " /proc/modules || insmod "$BASE/modules/$m.ko" || die "cannot load $m"
-    done
+    sh "$BASE/module-load.sh" "$BASE/modules" "$BASE/kernel.identity" || die 'module load verification failed'
     echo 1 > /proc/sys/net/netfilter/nf_conntrack_acct || die 'cannot enable accounting'
 }
 rotate_logs() {
